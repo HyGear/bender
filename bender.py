@@ -1,15 +1,28 @@
 # -*- coding: utf-8 -*-
 """
-bender
+bender: Small script for converting a set of points for a tube into CNC bend data.
 
-@author: YA2148
+This script will read a point file and calculate feed, bend angle, and twist angle.
+The results will be outputed to a CSV file which can be imported into Pro/E or other
+CAD programs.
 """
 import numpy as np
 import gc
 
 b_radius = 19.05
+f = open('proe.pts.1','r')
+temp = []
+
+#The following works for Pro/E point files.
+for line in f:
+    match = re.findall('(\-?[0-9].[0.9]+)( +)(\-?[0-9].[0.9]+)( +)(\-?[0-9].[0.9]+)',line)
+    if match:
+        temp.append([float(match[0][0]),float(match[0][2]),float(match[0][4])])
+f.close()
+pts = np.array(temp,float)
+
 #pts = np.array([[0,0,0],[10,50,30],[10,50,100],[10,100,100],[-66,170,0],[-66,170,-556]], float)
-pts = np.array([[0,0,0],[0,0,60],[151.299,0,289.944],[170.881,-2.612,477.909],[188.059,104.054,505.755],[215.229,245.949,575.032],[180.276,250.610,578.739]],float)
+#pts = np.array([[0,0,0],[0,0,60],[151.299,0,289.944],[170.881,-2.612,477.909],[188.059,104.054,505.755],[215.229,245.949,575.032],[180.276,250.610,578.739]],float)
 rows = int(pts.shape[0])
 vector = np.empty([rows,3])
 v_mag = np.empty([rows,1])
