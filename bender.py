@@ -15,7 +15,7 @@ temp = []
 
 #The following works for Pro/E point files.
 for line in f:
-    match = re.findall('(\-?[0-9].[0.9]+)( +)(\-?[0-9].[0.9]+)( +)(\-?[0-9].[0.9]+)',line)
+    match = re.findall('(\-?[0-9]+\.[0-9]+)( +)(\-?[0-9]+\.[0-9]+)( +)(\-?[0-9]+\.[0-9]+)',line)
     if match:
         temp.append([float(match[0][0]),float(match[0][2]),float(match[0][4])])
 f.close()
