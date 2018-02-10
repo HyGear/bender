@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 """
 bender: Small script for converting a set of points for a tube into CNC bend data.
-
 This script will read a point file and calculate feed, bend angle, and twist angle.
 The results will be outputed to a CSV file which can be imported into Pro/E or other
 CAD programs.
 """
 import numpy as np
 import gc
+import re
 
 b_radius = 19.05
 f = open('proe.pts.1','r')
@@ -47,6 +47,7 @@ while count < rows:
         bends[count] = np.arccos(bends[count])
         bends[count] = np.rad2deg(bends[count])
         bend_offset[count] = (b_radius*np.sin(np.deg2rad(bends[count])/2))/(np.sin(np.deg2rad(180-bends[count])/2)) 
+        #bend_offset[count] = (b_radius*np.cos(np.deg2rad(bends[count])/2))
     if count > 2:
         dir_test[count] = np.dot(vector[count],vector[count-2])/(np.linalg.norm(vector[count])*np.linalg.norm(vector[count-2]))
         dir_test[count] = np.arccos(dir_test[count])
@@ -72,17 +73,19 @@ while count < rows:
     count+=1
 
 bends = np.round(bends,3)
+bends = np.roll(bends,-1)
 rot = np.round(rot,3)
+rot = np.roll(rot,-1)
 norms = np.round(norms,3)
 feed = np.round(feed,3)
-#print bends
-#print dir_test
-#print rot
-#print feed
+
 
 point_tbl = np.hstack((pnt_num,vector,bends,bend_radius))
 #point_tbl = np.delete(point_tbl,(0),axis=0)
-cnc_tbl = np.hstack((feed,bends,rot))
+cnc_tbl = np.hstack((feed,rot,bends))
+cnc_tbl = np.delete(cnc_tbl,0,0)
+print (point_tbl)
+print (cnc_tbl)
 np.savetxt("point_tbl.csv", point_tbl, fmt="%10.3f", delimiter=",",header="Point,X,Y,Z,Bend Angle,Bend Radius",comments="")
-np.savetxt("cnc_tbl.csv", cnc_tbl, fmt="%10.3f", delimiter=",",header="Feed, Bend Angle, Twist Angle",comments="")
+np.savetxt("cnc_tbl.csv", cnc_tbl, fmt="%10.3f", delimiter=",",header="Feed, Twist Angle, Bend Angle",comments="")
 gc.collect()
