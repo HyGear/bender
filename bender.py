@@ -591,6 +591,9 @@ class TubeBenderGUI(tk.Tk):
             self.selected_theme_name = "Auto (OS Theme)"
         self.active_palette = self._resolve_theme(self.selected_theme_name)
 
+        # Temporary in-place entry widget reference for cell editing
+        self._cell_entry = None
+
         self._create_widgets()
         self.apply_theme()
 
@@ -663,13 +666,17 @@ class TubeBenderGUI(tk.Tk):
         self.paned = ttk.PanedWindow(self, orient=tk.HORIZONTAL)
         self.paned.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
-        self.left_frame = tk.LabelFrame(self.paned, text=" XYZ Centerline Points ", padx=6, pady=6)
+        self.left_frame = tk.LabelFrame(self.paned, text=" XYZ Centerline Points (Double-click cell to edit) ", padx=6, pady=6)
         self.paned.add(self.left_frame, weight=1)
 
         self.tree_xyz = ttk.Treeview(self.left_frame, columns=("Pnt", "X", "Y", "Z"), show="headings", selectmode="browse")
         for col in ("Pnt", "X", "Y", "Z"):
             self.tree_xyz.heading(col, text=col)
             self.tree_xyz.column(col, width=55, anchor=tk.CENTER)
+
+        # Event bindings for table interaction: double-click inline edit & selection fill
+        self.tree_xyz.bind("<Double-1>", self.on_tree_cell_double_click)
+        self.tree_xyz.bind("<<TreeviewSelect>>", self.on_tree_select_row)
 
         scroll_xyz = ttk.Scrollbar(self.left_frame, orient=tk.VERTICAL, command=self.tree_xyz.yview)
         self.tree_xyz.configure(yscrollcommand=scroll_xyz.set)
@@ -685,7 +692,7 @@ class TubeBenderGUI(tk.Tk):
         self.btn_clear = tk.Button(self.xyz_btn_box, text="Clear All", command=self.clear_xyz)
         self.btn_clear.pack(side=tk.LEFT, padx=2)
 
-        self.entry_strip = tk.LabelFrame(self.left_frame, text=" Manual Coordinate Entry ", padx=4, pady=4)
+        self.entry_strip = tk.LabelFrame(self.left_frame, text=" Manual Coordinate Entry / Edit ", padx=4, pady=4)
         self.entry_strip.pack(fill=tk.X, pady=(2, 0))
 
         tk.Label(self.entry_strip, text="X:").pack(side=tk.LEFT)
@@ -697,8 +704,11 @@ class TubeBenderGUI(tk.Tk):
         tk.Label(self.entry_strip, text="Z:").pack(side=tk.LEFT)
         self.entry_z = tk.Entry(self.entry_strip, width=6)
         self.entry_z.pack(side=tk.LEFT, padx=(0, 4))
-        self.btn_insert = tk.Button(self.entry_strip, text="Insert", command=self.insert_manual_pt)
-        self.btn_insert.pack(side=tk.LEFT)
+
+        self.btn_insert = tk.Button(self.entry_strip, text="Add New", command=self.insert_manual_pt)
+        self.btn_insert.pack(side=tk.LEFT, padx=(0, 2))
+        self.btn_update = tk.Button(self.entry_strip, text="Update Selected", command=self.update_selected_pt)
+        self.btn_update.pack(side=tk.LEFT)
 
         self.right_frame = tk.LabelFrame(self.paned, text=" CNC Bend Schedule (L-R-A / Y-B-C) ", padx=6, pady=6)
         self.paned.add(self.right_frame, weight=1)
@@ -716,6 +726,100 @@ class TubeBenderGUI(tk.Tk):
 
         self.status = tk.Label(self, text="Ready.", relief=tk.SUNKEN, anchor=tk.W, padx=6, pady=3)
         self.status.pack(side=tk.BOTTOM, fill=tk.X)
+
+    def on_tree_select_row(self, _=None):
+        """Populates manual entry boxes with the values of the currently selected row."""
+        selected = self.tree_xyz.selection()
+        if not selected:
+            return
+        vals = self.tree_xyz.item(selected[0], "values")
+        if len(vals) >= 4:
+            self.entry_x.delete(0, tk.END)
+            self.entry_x.insert(0, vals[1])
+            self.entry_y.delete(0, tk.END)
+            self.entry_y.insert(0, vals[2])
+            self.entry_z.delete(0, tk.END)
+            self.entry_z.insert(0, vals[3])
+
+    def update_selected_pt(self):
+        """Updates the selected row with values from the manual entry inputs."""
+        selected = self.tree_xyz.selection()
+        if not selected:
+            messagebox.showinfo("Selection Required", "Please select a point from the table to update.")
+            return
+
+        try:
+            x = float(self.entry_x.get())
+            y = float(self.entry_y.get())
+            z = float(self.entry_z.get())
+        except ValueError:
+            messagebox.showerror("Invalid Input", "Please enter valid numeric coordinates for X, Y, and Z.")
+            return
+
+        item = selected[0]
+        vals = list(self.tree_xyz.item(item, "values"))
+        vals[1] = f"{x:.3f}"
+        vals[2] = f"{y:.3f}"
+        vals[3] = f"{z:.3f}"
+        self.tree_xyz.item(item, values=vals)
+        self.status.config(text=f"Updated Point P{vals[0]} to ({x:.3f}, {y:.3f}, {z:.3f})")
+
+    def on_tree_cell_double_click(self, event):
+        """Places a floating in-place Entry widget over a double-clicked coordinate cell."""
+        if self._cell_entry:
+            self._cell_entry.destroy()
+            self._cell_entry = None
+
+        region = self.tree_xyz.identify("region", event.x, event.y)
+        if region != "cell":
+            return
+
+        column_id = self.tree_xyz.identify_column(event.x)
+        col_index = int(column_id.replace("#", "")) - 1
+        
+        # Prevent editing row index
+        if col_index == 0:
+            return
+
+        row_id = self.tree_xyz.identify_row(event.y)
+        if not row_id:
+            return
+
+        x, y, width, height = self.tree_xyz.bbox(row_id, column_id)
+        current_val = self.tree_xyz.item(row_id, "values")[col_index]
+
+        # Overlay entry widget onto bounding box
+        entry = tk.Entry(self.tree_xyz, font=("Consolas", 9), justify="center")
+        entry.place(x=x, y=y, width=width, height=height)
+        entry.insert(0, current_val)
+        entry.select_range(0, tk.END)
+        entry.focus_set()
+        self._cell_entry = entry
+
+        def save_cell_value(_=None):
+            if not self._cell_entry:
+                return
+            new_text = entry.get().strip()
+            try:
+                new_num = float(new_text)
+                vals = list(self.tree_xyz.item(row_id, "values"))
+                vals[col_index] = f"{new_num:.3f}"
+                self.tree_xyz.item(row_id, values=vals)
+                self.on_tree_select_row()
+            except ValueError:
+                messagebox.showerror("Invalid Input", "Cell value must be numeric.")
+            
+            entry.destroy()
+            self._cell_entry = None
+
+        def cancel_cell_edit(_=None):
+            if self._cell_entry:
+                self._cell_entry.destroy()
+                self._cell_entry = None
+
+        entry.bind("<Return>", save_cell_value)
+        entry.bind("<FocusOut>", save_cell_value)
+        entry.bind("<Escape>", cancel_cell_edit)
 
     def apply_theme(self):
         """Applies colors from the active theme to all Tk and ttk widgets."""
@@ -749,7 +853,7 @@ class TubeBenderGUI(tk.Tk):
         self.status.configure(bg=t["group_status"], fg=t["fg"])
 
         all_buttons = [self.btn_import, self.btn_calc, self.btn_3d, self.btn_export,
-                       self.btn_add, self.btn_del, self.btn_clear, self.btn_insert]
+                       self.btn_add, self.btn_del, self.btn_clear, self.btn_insert, self.btn_update]
         for b in all_buttons:
             b.configure(bg=t["btn_bg"], fg=t["btn_fg"], activebackground=t["tree_sel"], relief=tk.RAISED)
 
